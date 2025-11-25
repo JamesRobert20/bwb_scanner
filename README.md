@@ -47,7 +47,7 @@ pip install -r requirements.txt
 
 3. (Optional) Run tests to verify installation:
 ```bash
-pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
 ## Usage
