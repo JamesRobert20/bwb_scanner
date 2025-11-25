@@ -1,14 +1,8 @@
-"""
-FastAPI application for BWB Scanner.
-Provides REST API endpoints for the Next.js frontend.
-"""
-
 from typing import Annotated, Optional
 from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 from .scanner import BWBScanner
-import pandas as pd
-
+import os
 
 app = FastAPI(
     title="BWB Scanner API",
@@ -16,30 +10,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
-import os
-
-# Get allowed origins from environment variable
-# For production, set ALLOWED_ORIGINS in Vercel: "https://your-frontend.vercel.app,https://your-custom-domain.com"
-# For development, defaults to allow all origins
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
-
-if allowed_origins_env == "*":
-    # Development: allow all origins (can't use credentials with wildcard)
-    allow_origins = ["*"]
-    allow_credentials = False
-else:
-    # Production: specific origins (can use credentials)
-    allow_origins = [origin.strip() for origin in allowed_origins_env.split(",")]
-    allow_credentials = True
+origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+origins = origins_env.split(",") if origins_env != "*" else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_credentials=allow_credentials,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_origins=origins,
+    allow_credentials=origins_env != "*",
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 
@@ -76,6 +55,8 @@ def load_options_chain() -> BWBScanner:
         generator.save_to_csv(chain, csv_path)
     
     return BWBScanner(csv_path)
+
+
 
 
 @app.get("/")
