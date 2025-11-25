@@ -16,13 +16,30 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS for development (allow all origins)
+# Configure CORS
+import os
+
+# Get allowed origins from environment variable
+# For production, set ALLOWED_ORIGINS in Vercel: "https://your-frontend.vercel.app,https://your-custom-domain.com"
+# For development, defaults to allow all origins
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+
+if allowed_origins_env == "*":
+    # Development: allow all origins (can't use credentials with wildcard)
+    allow_origins = ["*"]
+    allow_credentials = False
+else:
+    # Production: specific origins (can use credentials)
+    allow_origins = [origin.strip() for origin in allowed_origins_env.split(",")]
+    allow_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=allow_origins,
+    allow_credentials=allow_credentials,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 

@@ -220,11 +220,13 @@ This will start the API service at `http://localhost:8000` with hot-reload enabl
 
 ### CORS Configuration
 
-The API is configured with CORS enabled for all origins in development mode. For production, update [`api.py`](bwb_scanner/api.py:20) to restrict allowed origins:
+The API is configured with CORS enabled for all origins in development mode. For production, set the `ALLOWED_ORIGINS` environment variable in Vercel to restrict allowed origins:
 
-```python
-allow_origins=["https://yourdomain.com"]
+```bash
+ALLOWED_ORIGINS=https://your-frontend.vercel.app,https://your-custom-domain.com
 ```
+
+If not set, it defaults to `*` (allow all origins) for development.
 
 ## Project Structure
 
@@ -402,13 +404,15 @@ Once deployed, your API will be available at:
 - `https://your-project.vercel.app/health` - Health check
 - `https://your-project.vercel.app/docs` - Interactive API documentation
 
-#### CORS Configuration
+#### Environment Variables
 
-Update CORS settings in `bwb_scanner/api.py` for production:
+Set these in your Vercel project settings:
 
-```python
-allow_origins=["https://your-frontend-domain.vercel.app"]
-```
+- `ALLOWED_ORIGINS` - Comma-separated list of allowed frontend origins (e.g., `https://your-frontend.vercel.app,https://your-custom-domain.com`). Defaults to `*` for development.
+
+The CORS configuration automatically adapts based on this environment variable:
+- If `ALLOWED_ORIGINS` is `*` or not set: Allows all origins (development mode)
+- If `ALLOWED_ORIGINS` is set to specific domains: Only allows those origins (production mode)
 
 #### Sample Data
 
