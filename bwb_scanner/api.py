@@ -33,7 +33,32 @@ def load_options_chain() -> BWBScanner:
     Returns:
         Initialized BWBScanner instance
     """
-    return BWBScanner("sample_options_chain.csv")
+    import os
+    from pathlib import Path
+    
+    # Try to find the CSV file in various locations
+    csv_paths = [
+        "sample_options_chain.csv",
+        os.path.join(os.path.dirname(__file__), "..", "sample_options_chain.csv"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "sample_options_chain.csv"),
+        "/var/task/sample_options_chain.csv",  # Vercel/Lambda path
+    ]
+    
+    csv_path = None
+    for path in csv_paths:
+        if os.path.exists(path):
+            csv_path = path
+            break
+    
+    # If file doesn't exist, generate it
+    if csv_path is None:
+        from .data_generator import OptionsChainGenerator
+        csv_path = "sample_options_chain.csv"
+        generator = OptionsChainGenerator(ticker="SPY")
+        chain = generator.generate_chain(spot_price=450.0)
+        generator.save_to_csv(chain, csv_path)
+    
+    return BWBScanner(csv_path)
 
 
 @app.get("/")

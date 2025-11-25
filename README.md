@@ -208,21 +208,15 @@ curl -X POST http://localhost:8000/scan \
   -d '{"ticker": "SPY", "expiry": "2025-11-30"}'
 ```
 
-### Docker Deployment
+### Local Development
 
-Run the API with Docker:
-
-```bash
-docker-compose up
-```
-
-This will start the API service at `http://localhost:8000`.
-
-To rebuild after code changes:
+Run the API server locally for development:
 
 ```bash
-docker-compose up --build
+python main.py --api
 ```
+
+This will start the API service at `http://localhost:8000` with hot-reload enabled.
 
 ### CORS Configuration
 
@@ -250,8 +244,9 @@ bwb_scanner/
 │   └── test_scanner.py       # Scanner integration tests
 ├── main.py                   # CLI entry point
 ├── example_usage.py          # Programmatic usage examples
-├── Dockerfile                # Docker container definition
-├── docker-compose.yml        # Multi-service orchestration
+├── api/                      # Vercel serverless functions
+│   └── index.py             # Vercel API handler
+├── vercel.json               # Vercel deployment configuration
 ├── requirements.txt          # Python dependencies
 ├── .gitignore               # Git ignore rules
 └── README.md                # This file
@@ -361,6 +356,70 @@ For a production trading system, consider adding:
 - **Optimization**: Early filtering reduces combinations checked
 - **Memory**: Efficient pandas operations for large datasets
 - **Scalability**: Can process thousands of options in seconds
+
+## 🚢 Deployment
+
+### Vercel (Recommended)
+
+Deploy the FastAPI backend as serverless functions on Vercel:
+
+#### Option 1: Deploy via Vercel Dashboard
+
+1. Push your code to GitHub/GitLab/Bitbucket
+2. Go to [vercel.com](https://vercel.com) and sign in
+3. Click "New Project" and import your repository
+4. Vercel will detect Python and use the `vercel.json` configuration
+5. Click "Deploy"
+
+#### Option 2: Deploy via Vercel CLI
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Login to Vercel
+vercel login
+
+# Deploy (first time)
+vercel
+
+# Deploy to production
+vercel --prod
+```
+
+#### Configuration
+
+The project includes:
+- `vercel.json` - Vercel configuration for Python serverless functions
+- `api/index.py` - Serverless function handler using Mangum adapter
+- `requirements.txt` - Includes `mangum` for ASGI-to-Lambda adaptation
+
+#### API Endpoints After Deployment
+
+Once deployed, your API will be available at:
+- `https://your-project.vercel.app/` - Root endpoint
+- `https://your-project.vercel.app/scan` - Scan endpoint
+- `https://your-project.vercel.app/health` - Health check
+- `https://your-project.vercel.app/docs` - Interactive API documentation
+
+#### CORS Configuration
+
+Update CORS settings in `bwb_scanner/api.py` for production:
+
+```python
+allow_origins=["https://your-frontend-domain.vercel.app"]
+```
+
+#### Sample Data
+
+The API will automatically generate `sample_options_chain.csv` on first request if it doesn't exist. For production, consider pre-generating this file or using a data storage service.
+
+### Other Deployment Options
+
+- **Railway**: Supports Python with FastAPI out of the box
+- **Render**: Free tier available for Python web services
+- **Fly.io**: Good for containerized Python apps
+- **AWS Lambda**: Use Mangum adapter (already included)
 
 ## License
 
