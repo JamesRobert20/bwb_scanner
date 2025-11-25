@@ -1,7 +1,9 @@
 from typing import Annotated, Optional
 from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
-from .scanner import BWBScanner
+from .strategy import BWBConstructor
+from .data_generator import OptionsChainGenerator
+import pandas as pd
 import os
 
 app = FastAPI(
@@ -22,41 +24,82 @@ app.add_middleware(
 )
 
 
-def load_options_chain() -> BWBScanner:
+# Cache the generated chain data in memory
+_cached_chain: Optional[pd.DataFrame] = None
+
+
+def get_options_chain() -> pd.DataFrame:
     """
-    Load the options chain data and return scanner instance.
+    Get options chain data (generates in-memory, no file I/O).
     
     Returns:
-        Initialized BWBScanner instance
+        DataFrame with options chain data
     """
-    import os
-    from pathlib import Path
+    global _cached_chain
     
-    # Try to find the CSV file in various locations
-    csv_paths = [
-        "sample_options_chain.csv",
-        os.path.join(os.path.dirname(__file__), "..", "sample_options_chain.csv"),
-        os.path.join(os.path.dirname(__file__), "..", "..", "sample_options_chain.csv"),
-        "/var/task/sample_options_chain.csv",  # Vercel/Lambda path
-        "/tmp/sample_options_chain.csv",  # Vercel writable path
-    ]
-    
-    csv_path = None
-    for path in csv_paths:
-        if os.path.exists(path):
-            csv_path = path
-            break
-    
-    # If file doesn't exist, generate it in /tmp (only writable location on Vercel)
-    if csv_path is None:
-        from .data_generator import OptionsChainGenerator
-        # Use /tmp for serverless environments (only writable directory)
-        csv_path = "/tmp/sample_options_chain.csv"
+    if _cached_chain is None:
         generator = OptionsChainGenerator(ticker="SPY")
-        chain = generator.generate_chain(spot_price=450.0)
-        generator.save_to_csv(chain, csv_path)
+        _cached_chain = generator.generate_chain(spot_price=450.0)
     
-    return BWBScanner(csv_path)
+    return _cached_chain
+
+
+def scan_chain(chain_data: pd.DataFrame, ticker: str, expiry: Optional[str] = None) -> pd.DataFrame:
+    """
+    Scan options chain for BWB opportunities.
+    
+    Args:
+        chain_data: Options chain DataFrame
+        ticker: Ticker symbol
+        expiry: Optional specific expiry date
+        
+    Returns:
+        DataFrame with valid BWB positions
+    """
+    constructor = BWBConstructor()
+    
+    # Filter by ticker
+    filtered = chain_data[chain_data["symbol"] == ticker.upper()].copy()
+    
+    if filtered.empty:
+        return pd.DataFrame(columns=[
+            "ticker", "expiry", "dte", "k1", "k2", "k3",
+            "wing_left", "wing_right", "credit", "max_profit",
+            "max_loss", "score"
+        ])
+    
+    # Filter by expiry if specified
+    if expiry:
+        filtered = filtered[filtered["expiry"] == expiry]
+    
+    # Get all expiries to scan
+    expiries = filtered["expiry"].unique()
+    
+    all_results = []
+    for exp in expiries:
+        expiry_data = filtered[filtered["expiry"] == exp]
+        calls_only = expiry_data[expiry_data["type"] == "call"]
+        
+        if calls_only.empty:
+            continue
+            
+        positions = constructor.find_all_combinations(calls_only)
+        
+        if positions:
+            results_df = pd.DataFrame([pos.to_dict() for pos in positions])
+            all_results.append(results_df)
+    
+    if not all_results:
+        return pd.DataFrame(columns=[
+            "ticker", "expiry", "dte", "k1", "k2", "k3",
+            "wing_left", "wing_right", "credit", "max_profit",
+            "max_loss", "score"
+        ])
+    
+    combined = pd.concat(all_results, ignore_index=True)
+    combined = combined.sort_values("score", ascending=False).reset_index(drop=True)
+    
+    return combined
 
 
 
@@ -87,14 +130,11 @@ async def scan_bwb(
     Returns:
         JSON with results and summary statistics
     """
-    # Load scanner with default filters
-    scanner = load_options_chain()
+    # Get options chain data (in-memory, no file I/O)
+    chain_data = get_options_chain()
     
     # Perform scan
-    if expiry:
-        results = scanner.scan(ticker, expiry)
-    else:
-        results = scanner.scan_all_expiries(ticker)
+    results = scan_chain(chain_data, ticker, expiry)
     
     # Convert results to dict
     if results.empty:
