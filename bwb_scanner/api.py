@@ -38,6 +38,7 @@ def load_options_chain() -> BWBScanner:
         os.path.join(os.path.dirname(__file__), "..", "sample_options_chain.csv"),
         os.path.join(os.path.dirname(__file__), "..", "..", "sample_options_chain.csv"),
         "/var/task/sample_options_chain.csv",  # Vercel/Lambda path
+        "/tmp/sample_options_chain.csv",  # Vercel writable path
     ]
     
     csv_path = None
@@ -46,10 +47,11 @@ def load_options_chain() -> BWBScanner:
             csv_path = path
             break
     
-    # If file doesn't exist, generate it
+    # If file doesn't exist, generate it in /tmp (only writable location on Vercel)
     if csv_path is None:
         from .data_generator import OptionsChainGenerator
-        csv_path = "sample_options_chain.csv"
+        # Use /tmp for serverless environments (only writable directory)
+        csv_path = "/tmp/sample_options_chain.csv"
         generator = OptionsChainGenerator(ticker="SPY")
         chain = generator.generate_chain(spot_price=450.0)
         generator.save_to_csv(chain, csv_path)
