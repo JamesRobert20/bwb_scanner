@@ -9,6 +9,33 @@ from bwb_scanner.scanner import BWBScanner
 from bwb_scanner.data_generator import OptionsChainGenerator
 
 
+def start_api_server():
+    """Start the FastAPI server."""
+    try:
+        import uvicorn
+        from bwb_scanner.api import app
+        
+        print("=" * 80)
+        print("Starting BWB Scanner API Server")
+        print("=" * 80)
+        print("\nAPI will be available at:")
+        print("  - http://localhost:8000")
+        print("  - API docs: http://localhost:8000/docs")
+        print("  - Health check: http://localhost:8000/health")
+        print("\nPress CTRL+C to stop the server\n")
+        
+        uvicorn.run(
+            "bwb_scanner.api:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=True
+        )
+    except ImportError:
+        print("Error: FastAPI and uvicorn are required to run the API server.")
+        print("Install them with: pip install fastapi uvicorn")
+        return
+
+
 def generate_sample_data(output_path: str = "sample_options_chain.csv") -> None:
     """
     Generate sample options chain data.
@@ -128,7 +155,18 @@ Examples:
         help="Don't show summary statistics"
     )
     
+    parser.add_argument(
+        "--api",
+        action="store_true",
+        help="Start the FastAPI server on port 8000"
+    )
+    
     args = parser.parse_args()
+    
+    # Handle API mode
+    if args.api:
+        start_api_server()
+        return
     
     if args.generate_sample:
         generate_sample_data()

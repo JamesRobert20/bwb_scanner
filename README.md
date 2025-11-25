@@ -111,12 +111,134 @@ Best Score: 0.1429
 Worst Score: 0.0571
 ```
 
+## API & Full-Stack Mode
+
+The BWB Scanner includes a FastAPI backend that can be consumed by web frontends.
+
+### Running the API Server
+
+Start the API server locally:
+
+```bash
+python main.py --api
+```
+
+The API will be available at:
+- **Base URL**: `http://localhost:8000`
+- **Interactive Docs**: `http://localhost:8000/docs`
+- **Health Check**: `http://localhost:8000/health`
+
+### API Endpoints
+
+#### GET /
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "message": "BWB Scanner API ready"
+}
+```
+
+#### POST /scan
+Scan for BWB opportunities.
+
+**Request Body:**
+```json
+{
+  "ticker": "SPY",
+  "expiry": "2025-11-30"  // Optional, omit to scan all expiries
+}
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "ticker": "SPY",
+      "expiry": "2025-11-30",
+      "dte": 5,
+      "k1": 440.0,
+      "k2": 445.0,
+      "k3": 455.0,
+      "wing_left": 5.0,
+      "wing_right": 10.0,
+      "credit": 2.0,
+      "max_profit": 200.0,
+      "max_loss": 800.0,
+      "score": 0.25
+    }
+  ],
+  "summary": {
+    "total_found": 45,
+    "avg_score": 0.1234,
+    "best_score": 0.25,
+    "avg_credit": 1.85
+  }
+}
+```
+
+#### GET /health
+Service health check for monitoring.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "bwb-scanner-api",
+  "version": "1.0.0"
+}
+```
+
+### Testing the API with curl
+
+```bash
+# Health check
+curl http://localhost:8000/
+
+# Scan all expiries for SPY
+curl -X POST http://localhost:8000/scan \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "SPY"}'
+
+# Scan specific expiry
+curl -X POST http://localhost:8000/scan \
+  -H "Content-Type: application/json" \
+  -d '{"ticker": "SPY", "expiry": "2025-11-30"}'
+```
+
+### Docker Deployment
+
+Run the API with Docker:
+
+```bash
+docker-compose up
+```
+
+This will start the API service at `http://localhost:8000`.
+
+To rebuild after code changes:
+
+```bash
+docker-compose up --build
+```
+
+### CORS Configuration
+
+The API is configured with CORS enabled for all origins in development mode. For production, update [`api.py`](bwb_scanner/api.py:20) to restrict allowed origins:
+
+```python
+allow_origins=["https://yourdomain.com"]
+```
+
 ## Project Structure
 
 ```
 bwb_scanner/
 ├── bwb_scanner/
 │   ├── __init__.py           # Package initialization
+│   ├── api.py                # FastAPI REST API
 │   ├── data_loader.py        # CSV loading and validation
 │   ├── data_generator.py     # Sample data generation
 │   ├── strategy.py           # BWB validation and construction
@@ -128,6 +250,8 @@ bwb_scanner/
 │   └── test_scanner.py       # Scanner integration tests
 ├── main.py                   # CLI entry point
 ├── example_usage.py          # Programmatic usage examples
+├── Dockerfile                # Docker container definition
+├── docker-compose.yml        # Multi-service orchestration
 ├── requirements.txt          # Python dependencies
 ├── .gitignore               # Git ignore rules
 └── README.md                # This file
