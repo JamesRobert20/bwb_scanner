@@ -1,4 +1,5 @@
 from typing import Annotated, Optional
+from collections import OrderedDict
 from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 from .strategy import BWBConstructor
@@ -23,15 +24,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-generator = OptionsChainGenerator(ticker="SPY")
-_chain_data = generator.generate_chain(spot_price=450.0, num_strikes=15)
+SUPPORTED_TICKERS = {
+    "SPY": 450.0,
+    "QQQ": 380.0,
+    "IWM": 200.0,
+    "AAPL": 175.0,
+    "MSFT": 375.0,
+    "NVDA": 475.0,
+    "TSLA": 250.0,
+    "AMD": 125.0,
+}
+
+def _generate_chain_data() -> pd.DataFrame:
+    """Generate options chain data for all supported tickers."""
+    all_chains = []
+    for ticker, spot_price in SUPPORTED_TICKERS.items():
+        generator = OptionsChainGenerator(ticker=ticker)
+        chain = generator.generate_chain(spot_price=spot_price, num_strikes=15)
+        all_chains.append(chain)
+    return pd.concat(all_chains, ignore_index=True)
+
+_chain_data = _generate_chain_data()
 _constructor = BWBConstructor()
 
-_scan_cache: dict = {}
+MAX_CACHE_SIZE = 100
+_scan_cache: OrderedDict = OrderedDict()
 
 def scan_chain(ticker: str, expiry: Optional[str] = None) -> pd.DataFrame:
     cache_key = f"{ticker}:{expiry or 'all'}"
     if cache_key in _scan_cache:
+        _scan_cache.move_to_end(cache_key)
         return _scan_cache[cache_key]
     
     empty_df = pd.DataFrame(columns=[
@@ -70,7 +92,10 @@ def scan_chain(ticker: str, expiry: Optional[str] = None) -> pd.DataFrame:
     combined = pd.concat(all_results, ignore_index=True)
     combined = combined.sort_values("score", ascending=False).reset_index(drop=True)
     
+    if len(_scan_cache) >= MAX_CACHE_SIZE:
+        _scan_cache.popitem(last=False)
     _scan_cache[cache_key] = combined
+    
     return combined
 
 
@@ -79,6 +104,14 @@ def scan_chain(ticker: str, expiry: Optional[str] = None) -> pd.DataFrame:
 @app.get("/")
 async def root():
     return {"message": "BWB Scanner API ready"}
+
+
+@app.get("/tickers")
+async def list_tickers():
+    return {
+        "supported_tickers": list(SUPPORTED_TICKERS.keys()),
+        "spot_prices": SUPPORTED_TICKERS
+    }
 
 
 @app.post("/scan")

@@ -75,6 +75,39 @@ class OptionsChainLoader:
         
         return df
     
+    def _validate_market_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Validate market data integrity.
+        
+        Args:
+            df: DataFrame to validate
+            
+        Returns:
+            DataFrame with invalid rows removed
+        """
+        initial_len = len(df)
+        
+        # Remove rows with negative prices
+        df = df[(df["bid"] >= 0) & (df["ask"] >= 0) & (df["strike"] > 0)]
+        
+        # Remove rows where bid > ask (invalid market data)
+        df = df[df["bid"] <= df["ask"]]
+        
+        # Remove rows with invalid DTE (must be >= 0)
+        df = df[df["dte"] >= 0]
+        
+        # Remove rows with invalid delta for calls (0-1) and puts (-1 to 0)
+        calls_valid = (df["type"] == "call") & (df["delta"] >= 0) & (df["delta"] <= 1)
+        puts_valid = (df["type"] == "put") & (df["delta"] >= -1) & (df["delta"] <= 0)
+        df = df[calls_valid | puts_valid]
+        
+        removed = initial_len - len(df)
+        if removed > 0:
+            import warnings
+            warnings.warn(f"Removed {removed} rows with invalid market data")
+        
+        return df
+    
     def load(self) -> pd.DataFrame:
         """
         Load and validate the options chain data.
@@ -92,6 +125,9 @@ class OptionsChainLoader:
         
         # Remove rows with missing critical data
         df = df.dropna(subset=["strike", "bid", "ask", "delta"])
+        
+        # Validate market data integrity
+        df = self._validate_market_data(df)
         
         return df
     

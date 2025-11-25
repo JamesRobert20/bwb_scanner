@@ -17,14 +17,14 @@ class TestBWBScanner:
     def sample_csv_file(self):
         """Create a temporary CSV file with sample data."""
         data = """symbol,expiry,dte,strike,type,bid,ask,mid,delta,iv
-SPY,2025-11-30,5,440,call,15.0,8.0,11.5,0.70,0.20
-SPY,2025-11-30,5,445,call,10.0,5.0,7.5,0.30,0.20
-SPY,2025-11-30,5,455,call,3.0,2.0,2.5,0.10,0.20
-SPY,2025-11-30,5,440,put,2.0,2.5,2.25,0.25,0.20
-SPY,2025-12-05,10,440,call,16.0,9.0,12.5,0.72,0.22
-SPY,2025-12-05,10,445,call,11.0,6.0,8.5,0.32,0.22
-SPY,2025-12-05,10,455,call,4.0,3.0,3.5,0.12,0.22
-AAPL,2025-11-30,5,180,call,8.0,4.0,6.0,0.28,0.25"""
+SPY,2025-11-30,5,440,call,14.5,15.5,15.0,0.70,0.20
+SPY,2025-11-30,5,445,call,9.5,10.5,10.0,0.30,0.20
+SPY,2025-11-30,5,455,call,2.5,3.5,3.0,0.10,0.20
+SPY,2025-11-30,5,440,put,2.0,2.5,2.25,-0.25,0.20
+SPY,2025-12-05,10,440,call,15.5,16.5,16.0,0.72,0.22
+SPY,2025-12-05,10,445,call,10.5,11.5,11.0,0.32,0.22
+SPY,2025-12-05,10,455,call,3.5,4.5,4.0,0.12,0.22
+AAPL,2025-11-30,5,180,call,7.5,8.5,8.0,0.28,0.25"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
             f.write(data)
@@ -135,16 +135,16 @@ class TestScannerFilters:
     def comprehensive_csv(self):
         """Create CSV with data designed to test all filters."""
         data = """symbol,expiry,dte,strike,type,bid,ask,mid,delta,iv
-SPY,2025-11-30,5,440,call,20.0,10.0,15.0,0.70,0.20
-SPY,2025-11-30,5,445,call,15.0,8.0,11.5,0.30,0.20
-SPY,2025-11-30,5,455,call,5.0,3.0,4.0,0.10,0.20
-SPY,2025-11-30,5,460,call,2.0,1.5,1.75,0.05,0.20
-SPY,2025-11-30,0,440,call,20.0,10.0,15.0,0.70,0.20
-SPY,2025-11-30,0,445,call,15.0,8.0,11.5,0.15,0.20
-SPY,2025-11-30,0,455,call,5.0,3.0,4.0,0.10,0.20
-SPY,2025-11-30,15,440,call,20.0,10.0,15.0,0.70,0.20
-SPY,2025-11-30,15,445,call,15.0,8.0,11.5,0.30,0.20
-SPY,2025-11-30,15,455,call,5.0,3.0,4.0,0.10,0.20"""
+SPY,2025-11-30,5,440,call,19.0,21.0,20.0,0.70,0.20
+SPY,2025-11-30,5,445,call,14.0,16.0,15.0,0.30,0.20
+SPY,2025-11-30,5,455,call,4.0,6.0,5.0,0.10,0.20
+SPY,2025-11-30,5,460,call,1.5,2.5,2.0,0.05,0.20
+SPY,2025-11-30,0,440,call,19.0,21.0,20.0,0.70,0.20
+SPY,2025-11-30,0,445,call,14.0,16.0,15.0,0.15,0.20
+SPY,2025-11-30,0,455,call,4.0,6.0,5.0,0.10,0.20
+SPY,2025-11-30,15,440,call,19.0,21.0,20.0,0.70,0.20
+SPY,2025-11-30,15,445,call,14.0,16.0,15.0,0.30,0.20
+SPY,2025-11-30,15,455,call,4.0,6.0,5.0,0.10,0.20"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
             f.write(data)
@@ -229,7 +229,7 @@ SPY,2025-11-30,5,485,call,47.0,49.0,48.0,0.40,0.20
 SPY,2025-11-30,5,490,call,42.0,44.0,43.0,0.35,0.20
 SPY,2025-11-30,5,495,call,37.0,39.0,38.0,0.30,0.20
 SPY,2025-11-30,5,500,call,32.0,34.0,33.0,0.25,0.20
-SPY,2025-11-30,5,505,call,27.0,29.0,28.0,0.20,0.20
+SPY,2025-11-30,5,505,call,27.0,29.0,28.0,0.22,0.20
 SPY,2025-11-30,5,510,call,22.0,24.0,23.0,0.15,0.20"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
@@ -312,10 +312,9 @@ class TestScannerEdgeCases:
     
     def test_empty_results(self):
         """Test handling when no valid positions are found."""
-        # Create CSV with data that won't produce valid BWBs
         data = """symbol,expiry,dte,strike,type,bid,ask,mid,delta,iv
-SPY,2025-11-30,5,440,call,1.0,2.0,1.5,0.10,0.20
-SPY,2025-11-30,5,445,call,0.5,1.0,0.75,0.05,0.20"""
+SPY,2025-11-30,5,440,call,1.5,2.0,1.75,0.10,0.20
+SPY,2025-11-30,5,445,call,0.8,1.0,0.9,0.05,0.20"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
             f.write(data)
@@ -338,7 +337,7 @@ SPY,2025-11-30,5,445,call,0.5,1.0,0.75,0.05,0.20"""
     def test_single_strike(self):
         """Test handling of chain with only one strike."""
         data = """symbol,expiry,dte,strike,type,bid,ask,mid,delta,iv
-SPY,2025-11-30,5,440,call,15.0,15.5,15.25,0.30,0.20"""
+SPY,2025-11-30,5,440,call,14.5,15.5,15.0,0.30,0.20"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
             f.write(data)
@@ -357,9 +356,9 @@ SPY,2025-11-30,5,440,call,15.0,15.5,15.25,0.30,0.20"""
     def test_only_puts_in_chain(self):
         """Test handling when chain only contains puts."""
         data = """symbol,expiry,dte,strike,type,bid,ask,mid,delta,iv
-SPY,2025-11-30,5,440,put,5.0,5.5,5.25,0.25,0.20
-SPY,2025-11-30,5,445,put,6.0,6.5,6.25,0.30,0.20
-SPY,2025-11-30,5,450,put,7.0,7.5,7.25,0.35,0.20"""
+SPY,2025-11-30,5,440,put,5.0,5.5,5.25,-0.25,0.20
+SPY,2025-11-30,5,445,put,6.0,6.5,6.25,-0.30,0.20
+SPY,2025-11-30,5,450,put,7.0,7.5,7.25,-0.35,0.20"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
             f.write(data)

@@ -82,8 +82,6 @@ class TestBWBCalculator:
     def test_calculate_credit_basic(self):
         """Test credit calculation with simple values."""
         calculator = BWBCalculator()
-        # Long K1 @ $10 ask, Short 2x K2 @ $6 bid, Long K3 @ $2 ask
-        # Credit = (2 * 6) - 10 - 2 = 12 - 12 = 0
         credit = calculator.calculate_credit(
             ask_k1=10.0,
             bid_k2=6.0,
@@ -94,9 +92,6 @@ class TestBWBCalculator:
     def test_calculate_credit_realistic(self):
         """Test credit calculation with realistic BWB values."""
         calculator = BWBCalculator()
-        # Example: 440/445/455 BWB
-        # Long 440 call @ $12.50 ask, Short 2x 445 calls @ $9.00 bid, Long 455 call @ $4.00 ask
-        # Credit = (2 * 9.00) - 12.50 - 4.00 = 18.00 - 16.50 = 1.50 credit
         credit = calculator.calculate_credit(
             ask_k1=12.50,
             bid_k2=9.00,
@@ -104,9 +99,6 @@ class TestBWBCalculator:
         )
         assert credit == 1.50
         
-        # Example with net debit
-        # Long 440 call @ $15.50 ask, Short 2x 445 calls @ $8.00 bid, Long 455 call @ $3.50 ask
-        # Credit = (2 * 8.00) - 15.50 - 3.50 = 16.00 - 19.00 = -3.00 (debit)
         credit = calculator.calculate_credit(
             ask_k1=15.50,
             bid_k2=8.00,
@@ -117,71 +109,80 @@ class TestBWBCalculator:
     def test_calculate_max_profit(self):
         """Test max profit calculation."""
         calculator = BWBCalculator()
-        # Max profit = credit * 100
-        assert calculator.calculate_max_profit(1.50) == 150.0
-        assert calculator.calculate_max_profit(2.00) == 200.0
-        assert calculator.calculate_max_profit(0.50) == 50.0
+        # Max profit = (credit + wing_left) * 100
+        # 440/445/455: wing_left = 5
+        assert calculator.calculate_max_profit(credit=2.0, wing_left=5.0) == 700.0
+        assert calculator.calculate_max_profit(credit=1.5, wing_left=5.0) == 650.0
+        assert calculator.calculate_max_profit(credit=0.0, wing_left=5.0) == 500.0
     
     def test_calculate_max_loss_known_example(self):
         """Test max loss calculation with known example."""
         calculator = BWBCalculator()
-        # Example: 440/445/455 BWB
-        # Wing left = 445 - 440 = 5
-        # Wing right = 455 - 445 = 10
-        # Larger wing = 10
-        # Max profit = $200 (credit of $2.00)
-        # Max loss = (10 * 100) - 200 = 1000 - 200 = 800
+        # 440/445/455 BWB with $2 credit
+        # wing_left = 5, wing_right = 10
+        # Max loss = (10 - 5 - 2) * 100 = 300
         max_loss = calculator.calculate_max_loss(
-            k1=440,
-            k2=445,
-            k3=455,
-            max_profit=200.0
+            wing_left=5.0,
+            wing_right=10.0,
+            credit=2.0
         )
-        assert max_loss == 800.0
+        assert max_loss == 300.0
     
     def test_calculate_max_loss_symmetric_wings(self):
         """Test max loss when wings are equal (edge case)."""
         calculator = BWBCalculator()
-        # 440/445/450 - both wings are 5
-        # Max profit = $100
-        # Max loss = (5 * 100) - 100 = 400
+        # 440/445/450: wing_left = 5, wing_right = 5, credit = 1
+        # Max loss = (5 - 5 - 1) * 100 = -100 -> clamped to 0
         max_loss = calculator.calculate_max_loss(
-            k1=440,
-            k2=445,
-            k3=450,
-            max_profit=100.0
+            wing_left=5.0,
+            wing_right=5.0,
+            credit=1.0
         )
-        assert max_loss == 400.0
+        assert max_loss == 0.0
+    
+    def test_calculate_max_loss_debit_position(self):
+        """Test max loss for debit position (loss below K1)."""
+        calculator = BWBCalculator()
+        # Debit of $3: if stock expires below K1, lose the debit
+        max_loss = calculator.calculate_max_loss(
+            wing_left=5.0,
+            wing_right=5.0,
+            credit=-3.0
+        )
+        assert max_loss == 300.0
     
     def test_calculate_score(self):
-        """Test score calculation (returns percentage 0-100)."""
+        """Test score calculation."""
         calculator = BWBCalculator()
-        assert calculator.calculate_score(200.0, 800.0) == 25.0
+        assert calculator.calculate_score(700.0, 300.0) == pytest.approx(233.33, rel=0.01)
         assert calculator.calculate_score(150.0, 600.0) == 25.0
         assert calculator.calculate_score(100.0, 100.0) == 100.0
-        assert calculator.calculate_score(100.0, 0.0) == 0.0
+        assert calculator.calculate_score(100.0, 0.0) == 100.0  # No loss = max score
     
     def test_full_payoff_calculation(self):
         """Test complete payoff calculation for a known BWB."""
         calculator = BWBCalculator()
         
-        # Known example: 440/445/455 BWB
-        # Prices: Long 440 @ $14 ask, Short 2x 445 @ $9 bid, Long 455 @ $4 ask
+        # 440/445/455 BWB
+        # Prices: Long 440 @ $12 ask, Short 2x 445 @ $8 bid, Long 455 @ $2 ask
         k1, k2, k3 = 440, 445, 455
-        ask_k1, bid_k2, ask_k3 = 14.0, 9.0, 4.0
+        ask_k1, bid_k2, ask_k3 = 12.0, 8.0, 2.0
+        wing_left = k2 - k1  # 5
+        wing_right = k3 - k2  # 10
         
-        # Calculate all metrics
         credit = calculator.calculate_credit(ask_k1, bid_k2, ask_k3)
-        max_profit = calculator.calculate_max_profit(credit)
-        max_loss = calculator.calculate_max_loss(k1, k2, k3, max_profit)
+        max_profit = calculator.calculate_max_profit(credit, wing_left)
+        max_loss = calculator.calculate_max_loss(wing_left, wing_right, credit)
         score = calculator.calculate_score(max_profit, max_loss)
         
-        # Verify calculations
-        # Credit = (2 * 9) - 14 - 4 = 18 - 18 = 0... let's use different numbers
-        assert credit == 0.0
-        assert max_profit == 0.0
-        assert max_loss == 1000.0  # (10 * 100) - 0
-        assert score == 0.0
+        # Credit = (2 * 8) - 12 - 2 = 2
+        assert credit == 2.0
+        # Max profit at K2 = (2 + 5) * 100 = 700
+        assert max_profit == 700.0
+        # Max loss above K3 = (10 - 5 - 2) * 100 = 300
+        assert max_loss == 300.0
+        # Score = 700 / 300 * 100 = 233.33
+        assert score == pytest.approx(233.33, rel=0.01)
 
 
 class TestBWBConstructor:
@@ -196,9 +197,9 @@ class TestBWBConstructor:
             "dte": [5] * 5,
             "strike": [440.0, 445.0, 450.0, 455.0, 460.0],
             "type": ["call"] * 5,
-            "bid": [15.0, 10.0, 6.0, 3.0, 1.5],
+            "bid": [14.5, 10.0, 6.0, 3.0, 1.5],
             "ask": [15.5, 10.5, 6.5, 3.5, 2.0],
-            "mid": [15.25, 10.25, 6.25, 3.25, 1.75],
+            "mid": [15.0, 10.25, 6.25, 3.25, 1.75],
             "delta": [0.70, 0.30, 0.15, 0.08, 0.04],
             "iv": [0.20] * 5
         }
@@ -229,18 +230,20 @@ class TestBWBConstructor:
         assert position.credit == 1.0
         assert position.wing_left == 5.0
         assert position.wing_right == 10.0
+        # Max profit = (1.0 + 5.0) * 100 = 600
+        assert position.max_profit == 600.0
+        # Max loss = (10 - 5 - 1) * 100 = 400
+        assert position.max_loss == 400.0
     
     def test_build_position_invalid_delta(self, sample_chain):
         """Test that position with invalid delta is rejected."""
         constructor = BWBConstructor()
-        # 440/450/455: delta at 450 is 0.15, outside 0.20-0.35 range
         position = constructor._build_position(sample_chain, 440.0, 450.0, 455.0)
         assert position is None
     
     def test_build_position_symmetric(self, sample_chain):
         """Test that symmetric wings are rejected."""
         constructor = BWBConstructor()
-        # 440/445/450: both wings are 5, symmetric
         position = constructor._build_position(sample_chain, 440.0, 445.0, 450.0)
         assert position is None
     
@@ -248,14 +251,10 @@ class TestBWBConstructor:
         """Test finding all valid combinations."""
         constructor = BWBConstructor()
         positions = constructor.find_all_combinations(sample_chain)
-        # Should find some positions (exact count depends on credit requirements)
         assert isinstance(positions, list)
-        # All positions should be BWBPosition objects
         for pos in positions:
             assert isinstance(pos, BWBPosition)
-            # Verify asymmetry
-            assert pos.wing_left != pos.wing_right
-            # Verify credit requirement
+            assert abs(pos.wing_left - pos.wing_right) > 0.001
             assert pos.credit >= 0.50
 
 
@@ -316,98 +315,170 @@ class TestPayoffMath:
     """Test suite for verifying payoff mathematics with known examples."""
     
     def test_known_example_1(self):
-        """
-        Test known BWB example 1:
-        440/445/455 call BWB
-        Prices: 440 call @ $13 ask, 445 call @ $8 bid, 455 call @ $3 ask
-        Credit = (2 * 8) - 13 - 3 = 16 - 16 = 0... use different numbers
-        """
+        """Test 440/445/455 call BWB with $2 credit."""
         calculator = BWBCalculator()
         
         k1, k2, k3 = 440, 445, 455
+        wing_left = k2 - k1  # 5
+        wing_right = k3 - k2  # 10
         ask_k1, bid_k2, ask_k3 = 12.0, 8.0, 2.0
         
         credit = calculator.calculate_credit(ask_k1, bid_k2, ask_k3)
-        max_profit = calculator.calculate_max_profit(credit)
-        max_loss = calculator.calculate_max_loss(k1, k2, k3, max_profit)
+        max_profit = calculator.calculate_max_profit(credit, wing_left)
+        max_loss = calculator.calculate_max_loss(wing_left, wing_right, credit)
         score = calculator.calculate_score(max_profit, max_loss)
         
-        # Credit = (2 * 8) - 12 - 2 = 16 - 14 = 2
-        assert credit == 2.0, "Credit should be (2*8) - 12 - 2 = 2"
-        assert max_profit == 200.0, "Max profit should be 2 * 100 = 200"
-        assert max_loss == 800.0, "Max loss should be (10 * 100) - 200 = 800"
-        assert score == 25.0, "Score should be (200 / 800) * 100 = 25"
+        assert credit == 2.0
+        assert max_profit == 700.0  # (2 + 5) * 100
+        assert max_loss == 300.0  # (10 - 5 - 2) * 100
+        assert score == pytest.approx(233.33, rel=0.01)
+
+
+class TestPayoffAtUnderlying:
+    """Test payoff at various underlying prices to validate payoff shape."""
+    
+    @staticmethod
+    def calculate_payoff_at_expiry(spot: float, k1: float, k2: float, k3: float, credit: float) -> float:
+        """Calculate BWB P&L at expiration for a given spot price."""
+        long_k1 = max(0, spot - k1)
+        short_k2 = -2 * max(0, spot - k2)
+        long_k3 = max(0, spot - k3)
+        intrinsic = long_k1 + short_k2 + long_k3
+        return (credit + intrinsic) * 100
+    
+    def test_payoff_below_k1(self):
+        """Below K1: all calls expire worthless, P&L = credit."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        payoff = self.calculate_payoff_at_expiry(spot=430, k1=k1, k2=k2, k3=k3, credit=credit)
+        assert payoff == 200.0  # Just the credit
+    
+    def test_payoff_at_k1(self):
+        """At K1: long K1 is ATM, P&L = credit."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        payoff = self.calculate_payoff_at_expiry(spot=440, k1=k1, k2=k2, k3=k3, credit=credit)
+        assert payoff == 200.0
+    
+    def test_payoff_at_k2(self):
+        """At K2: max profit point."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        payoff = self.calculate_payoff_at_expiry(spot=445, k1=k1, k2=k2, k3=k3, credit=credit)
+        assert payoff == 700.0  # credit + (k2 - k1) = 2 + 5 = 7 * 100
+    
+    def test_payoff_between_k2_and_k3(self):
+        """Between K2 and K3: profit decreases linearly."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        payoff = self.calculate_payoff_at_expiry(spot=450, k1=k1, k2=k2, k3=k3, credit=credit)
+        # At 450: long_k1 = 10, short_k2 = -10, long_k3 = 0
+        # intrinsic = 10 - 10 + 0 = 0, P&L = (2 + 0) * 100 = 200
+        assert payoff == 200.0
+    
+    def test_payoff_at_k3(self):
+        """At K3: loss begins."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        payoff = self.calculate_payoff_at_expiry(spot=455, k1=k1, k2=k2, k3=k3, credit=credit)
+        # At 455: long_k1 = 15, short_k2 = -20, long_k3 = 0
+        # intrinsic = 15 - 20 + 0 = -5, P&L = (2 - 5) * 100 = -300
+        assert payoff == -300.0
+    
+    def test_payoff_above_k3(self):
+        """Above K3: max loss (constant)."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        payoff_460 = self.calculate_payoff_at_expiry(spot=460, k1=k1, k2=k2, k3=k3, credit=credit)
+        payoff_500 = self.calculate_payoff_at_expiry(spot=500, k1=k1, k2=k2, k3=k3, credit=credit)
+        # Above K3, all intrinsic values net to (k1 + k3 - 2*k2) = 440 + 455 - 890 = 5 - 10 = -5
+        # Max loss = -300 regardless of how far above K3
+        assert payoff_460 == -300.0
+        assert payoff_500 == -300.0
+    
+    def test_max_profit_matches_calculator(self):
+        """Verify calculator's max_profit matches actual payoff at K2."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        wing_left = k2 - k1
+        
+        calculator = BWBCalculator()
+        calculated_max_profit = calculator.calculate_max_profit(credit, wing_left)
+        actual_payoff_at_k2 = self.calculate_payoff_at_expiry(spot=k2, k1=k1, k2=k2, k3=k3, credit=credit)
+        
+        assert calculated_max_profit == actual_payoff_at_k2
+    
+    def test_max_loss_matches_calculator(self):
+        """Verify calculator's max_loss matches actual payoff above K3."""
+        k1, k2, k3, credit = 440, 445, 455, 2.0
+        wing_left = k2 - k1
+        wing_right = k3 - k2
+        
+        calculator = BWBCalculator()
+        calculated_max_loss = calculator.calculate_max_loss(wing_left, wing_right, credit)
+        actual_payoff_above_k3 = self.calculate_payoff_at_expiry(spot=500, k1=k1, k2=k2, k3=k3, credit=credit)
+        
+        assert calculated_max_loss == -actual_payoff_above_k3  # max_loss is positive, payoff is negative
+    
+    def test_larger_left_wing_no_upside_loss(self):
+        """When left wing > right wing, no loss above K3."""
+        k1, k2, k3, credit = 440, 450, 455, 2.0  # left=10, right=5
+        wing_left = k2 - k1
+        wing_right = k3 - k2
+        
+        payoff_above_k3 = self.calculate_payoff_at_expiry(spot=500, k1=k1, k2=k2, k3=k3, credit=credit)
+        # intrinsic = (500-440) - 2*(500-450) + (500-455) = 60 - 100 + 45 = 5
+        # P&L = (2 + 5) * 100 = 700 (profit, not loss!)
+        assert payoff_above_k3 == 700.0
+        
+        calculator = BWBCalculator()
+        max_loss = calculator.calculate_max_loss(wing_left, wing_right, credit)
+        assert max_loss == 0.0  # No loss scenario for credit position with larger left wing
     
     def test_known_example_2(self):
-        """
-        Test known BWB example 2:
-        450/460/465 call BWB (larger left wing)
-        Prices: 450 call @ $18 ask, 460 call @ $12 bid, 465 call @ $6 ask
-        """
+        """Test 450/460/465 call BWB (larger left wing) with zero credit."""
         calculator = BWBCalculator()
         
         k1, k2, k3 = 450, 460, 465
+        wing_left = k2 - k1  # 10
+        wing_right = k3 - k2  # 5
         ask_k1, bid_k2, ask_k3 = 18.0, 12.0, 6.0
         
         credit = calculator.calculate_credit(ask_k1, bid_k2, ask_k3)
-        max_profit = calculator.calculate_max_profit(credit)
-        max_loss = calculator.calculate_max_loss(k1, k2, k3, max_profit)
+        max_profit = calculator.calculate_max_profit(credit, wing_left)
+        max_loss = calculator.calculate_max_loss(wing_left, wing_right, credit)
         score = calculator.calculate_score(max_profit, max_loss)
         
-        # Credit = (2 * 12) - 18 - 6 = 24 - 24 = 0... adjust
-        assert credit == 0.0, "Credit should be (2*12) - 18 - 6 = 0"
-        assert max_profit == 0.0, "Max profit should be 0 * 100 = 0"
-        assert max_loss == 1000.0, "Max loss should be (10 * 100) - 0 = 1000"
-        assert score == 0.0, "Score should be 0 when no profit"
+        assert credit == 0.0
+        assert max_profit == 1000.0  # (0 + 10) * 100
+        # Max loss = (5 - 10 - 0) * 100 = -500, clamped to 0
+        assert max_loss == 0.0
+        assert score == 100.0  # No loss = max score
     
     def test_known_example_3_with_credit(self):
-        """
-        Test BWB with positive credit.
-        450/460/465: Long @ $16 ask, Short @ $12 bid, Long @ $5 ask
-        Credit = (2 * 12) - 16 - 5 = 24 - 21 = 3
-        """
+        """Test 450/460/465 BWB with $3 credit."""
         calculator = BWBCalculator()
         
         k1, k2, k3 = 450, 460, 465
+        wing_left = k2 - k1  # 10
+        wing_right = k3 - k2  # 5
         ask_k1, bid_k2, ask_k3 = 16.0, 12.0, 5.0
         
         credit = calculator.calculate_credit(ask_k1, bid_k2, ask_k3)
-        max_profit = calculator.calculate_max_profit(credit)
-        max_loss = calculator.calculate_max_loss(k1, k2, k3, max_profit)
+        max_profit = calculator.calculate_max_profit(credit, wing_left)
+        max_loss = calculator.calculate_max_loss(wing_left, wing_right, credit)
         
-        assert credit == 3.0, "Credit should be (2*12) - 16 - 5 = 3"
-        assert max_profit == 300.0, "Max profit should be 300"
-        assert max_loss == 700.0, "Max loss should be (10 * 100) - 300 = 700"
-    
-    def test_payoff_at_expiration_below_k1(self):
-        """
-        Test theoretical payoff when stock expires below K1.
-        At expiration, if stock < K1, all calls expire worthless.
-        P&L = credit received
-        """
-        calculator = BWBCalculator()
-        credit = 2.0
-        max_profit = calculator.calculate_max_profit(credit)
-        assert max_profit == 200.0
+        assert credit == 3.0
+        assert max_profit == 1300.0  # (3 + 10) * 100
+        # Max loss = (5 - 10 - 3) * 100 = -800, clamped to 0
+        assert max_loss == 0.0
     
     def test_payoff_at_expiration_at_k2(self):
-        """
-        Test theoretical payoff when stock expires at K2.
-        This is where max profit occurs for a standard butterfly.
-        """
+        """Test max profit at K2 includes intrinsic value of left wing."""
         calculator = BWBCalculator()
-        credit = 2.0
-        max_profit = calculator.calculate_max_profit(credit)
-        assert max_profit == 200.0
+        # 440/445/455: wing_left = 5, credit = 2
+        max_profit = calculator.calculate_max_profit(credit=2.0, wing_left=5.0)
+        assert max_profit == 700.0
     
     def test_payoff_at_expiration_above_k3(self):
-        """
-        Test theoretical payoff when stock expires above K3.
-        Max loss = larger wing width * 100 - max profit
-        """
+        """Test max loss above K3."""
         calculator = BWBCalculator()
-        max_loss = calculator.calculate_max_loss(440, 445, 455, 200.0)
-        assert max_loss == 800.0
+        # 440/445/455: wing_left = 5, wing_right = 10, credit = 2
+        max_loss = calculator.calculate_max_loss(wing_left=5.0, wing_right=10.0, credit=2.0)
+        assert max_loss == 300.0
 
 
 class TestFilters:
@@ -422,9 +493,9 @@ class TestFilters:
             "dte": [1, 5, 5, 10, 10, 15, 15, 20, 20, 25],
             "strike": [440, 445, 450, 455, 460, 465, 470, 475, 480, 485],
             "type": ["call"] * 10,
-            "bid": [15.0, 12.0, 9.0, 6.0, 4.0, 2.5, 1.5, 1.0, 0.5, 0.3],
+            "bid": [14.5, 11.5, 8.5, 5.5, 3.5, 2.0, 1.0, 0.5, 0.3, 0.1],
             "ask": [15.5, 12.5, 9.5, 6.5, 4.5, 3.0, 2.0, 1.5, 1.0, 0.8],
-            "mid": [15.25, 12.25, 9.25, 6.25, 4.25, 2.75, 1.75, 1.25, 0.75, 0.55],
+            "mid": [15.0, 12.0, 9.0, 6.0, 4.0, 2.5, 1.5, 1.0, 0.65, 0.45],
             "delta": [0.70, 0.50, 0.30, 0.20, 0.15, 0.10, 0.08, 0.05, 0.03, 0.02],
             "iv": [0.20] * 10
         }
@@ -545,33 +616,27 @@ class TestEdgeCases:
         """Test chain where all possible combinations are symmetric."""
         constructor = BWBConstructor()
         
-        # Strikes with equal spacing (all symmetric)
         data = {
             "symbol": ["SPY"] * 5,
             "expiry": ["2025-11-30"] * 5,
             "dte": [5] * 5,
-            "strike": [440.0, 445.0, 450.0, 455.0, 460.0],  # All 5 apart
+            "strike": [440.0, 445.0, 450.0, 455.0, 460.0],
             "type": ["call"] * 5,
-            "bid": [20.0, 15.0, 10.0, 6.0, 3.0],
+            "bid": [19.5, 14.5, 9.5, 5.5, 2.5],
             "ask": [20.5, 15.5, 10.5, 6.5, 3.5],
-            "mid": [20.25, 15.25, 10.25, 6.25, 3.25],
+            "mid": [20.0, 15.0, 10.0, 6.0, 3.0],
             "delta": [0.70, 0.50, 0.30, 0.20, 0.10],
             "iv": [0.20] * 5
         }
         chain = pd.DataFrame(data)
         
         positions = constructor.find_all_combinations(chain)
-        # Note: While strikes are equally spaced, not ALL combinations are symmetric
-        # For example: 440/450/455 has wings of 10 and 5 (asymmetric)
-        # So we should find some positions
-        # Let's verify that symmetric ones like 440/445/450 are NOT included
         if len(positions) > 0:
             for pos in positions:
-                # Verify all found positions are asymmetric
-                assert pos.wing_left != pos.wing_right
+                assert abs(pos.wing_left - pos.wing_right) > 0.001
     
     def test_zero_max_loss_edge_case(self):
         """Test score calculation when max_loss is zero."""
         calculator = BWBCalculator()
         score = calculator.calculate_score(max_profit=100.0, max_loss=0.0)
-        assert score == 0.0, "Score should be 0 when max_loss is 0"
+        assert score == 100.0, "Score should be 100 when max_loss is 0 (best possible)"

@@ -106,20 +106,17 @@ class OptionsChainGenerator:
         Returns:
             Implied volatility
         """
-        # Add volatility smile (higher IV for OTM options)
         moneyness = abs(strike - spot_price) / spot_price
         smile_factor = 1.0 + (moneyness * 0.5)
         
-        # Add term structure (higher IV for shorter DTE)
-        term_factor = 1.0 + (0.1 * (10 - dte) / 10)
+        term_factor = 1.0 + 0.05 / max(1, np.sqrt(dte / 30))
         
         iv = base_iv * smile_factor * term_factor
         
-        # Add small random noise
         noise = np.random.normal(0, 0.01)
         iv = iv + noise
         
-        return round(max(0.05, iv), 4)
+        return round(max(0.05, min(1.5, iv)), 4)
     
     def _calculate_option_price(
         self,

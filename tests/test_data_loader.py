@@ -19,7 +19,7 @@ class TestOptionsChainLoader:
         data = """symbol,expiry,dte,strike,type,bid,ask,mid,delta,iv
 SPY,2025-11-30,5,440,call,15.0,15.5,15.25,0.70,0.20
 SPY,2025-11-30,5,445,call,10.0,10.5,10.25,0.30,0.20
-SPY,2025-11-30,5,450,put,5.0,5.5,5.25,0.25,0.20"""
+SPY,2025-11-30,5,450,put,5.0,5.5,5.25,-0.25,0.20"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
             f.write(data)
@@ -190,7 +190,7 @@ class TestDataIntegrity:
         data = """symbol,expiry,dte,strike,type,bid,ask,mid,delta,iv
 SPY,2025-11-30,5,440,CALL,15.0,15.5,15.25,0.70,0.20
 SPY,2025-11-30,5,445,Call,10.0,10.5,10.25,0.30,0.20
-SPY,2025-11-30,5,450,put,5.0,5.5,5.25,0.25,0.20"""
+SPY,2025-11-30,5,450,put,5.0,5.5,5.25,-0.25,0.20"""
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
             f.write(data)

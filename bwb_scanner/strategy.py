@@ -81,7 +81,7 @@ class BWBValidator:
         """Check if wings are asymmetric."""
         wing_left = k2 - k1
         wing_right = k3 - k2
-        return wing_left != wing_right
+        return abs(wing_left - wing_right) > 0.001
     
     def is_valid_credit(self, credit: float) -> bool:
         """Check if credit meets minimum requirement."""
@@ -111,48 +111,51 @@ class BWBCalculator:
         return (2 * bid_k2) - ask_k1 - ask_k3
     
     @staticmethod
-    def calculate_max_profit(credit: float) -> float:
+    def calculate_max_profit(credit: float, wing_left: float) -> float:
         """
         Calculate maximum profit.
         
+        Max profit occurs at K2 where the long K1 call has intrinsic value
+        equal to the left wing width.
+        
         Args:
             credit: Net credit received
+            wing_left: Width of left wing (K2 - K1)
             
         Returns:
-            Maximum profit (credit * 100)
+            Maximum profit in dollars
         """
-        return credit * 100
+        return (credit + wing_left) * 100
     
     @staticmethod
     def calculate_max_loss(
-        k1: float,
-        k2: float,
-        k3: float,
-        max_profit: float
+        wing_left: float,
+        wing_right: float,
+        credit: float
     ) -> float:
         """
         Calculate maximum loss.
         
+        For call BWB, max loss occurs above K3 when right wing > left wing,
+        or below K1 for debit positions.
+        
         Args:
-            k1: Strike price of long call 1
-            k2: Strike price of short calls
-            k3: Strike price of long call 2
-            max_profit: Maximum profit
+            wing_left: Width of left wing (K2 - K1)
+            wing_right: Width of right wing (K3 - K2)
+            credit: Net credit received
             
         Returns:
-            Maximum loss
+            Maximum loss in dollars (always >= 0)
         """
-        wing_left = k2 - k1
-        wing_right = k3 - k2
-        larger_wing = max(wing_left, wing_right)
-        return (larger_wing * 100) - max_profit
+        upside_loss = (wing_right - wing_left - credit) * 100
+        downside_loss = -credit * 100 if credit < 0 else 0
+        return max(0.0, upside_loss, downside_loss)
     
     @staticmethod
     def calculate_score(max_profit: float, max_loss: float) -> float:
-        if max_loss == 0:
-            return 0.0
-        raw_score = (max_profit / max_loss) * 100
-        return min(raw_score, 100.0)
+        if max_loss <= 0:
+            return 100.0
+        return (max_profit / max_loss) * 100
 
 
 class BWBConstructor:
@@ -238,12 +241,12 @@ class BWBConstructor:
         if not self.validator.is_valid_credit(credit):
             return None
         
-        max_profit = self.calculator.calculate_max_profit(credit)
-        max_loss = self.calculator.calculate_max_loss(k1, k2, k3, max_profit)
-        score = self.calculator.calculate_score(max_profit, max_loss)
-        
         wing_left = k2 - k1
         wing_right = k3 - k2
+        
+        max_profit = self.calculator.calculate_max_profit(credit, wing_left)
+        max_loss = self.calculator.calculate_max_loss(wing_left, wing_right, credit)
+        score = self.calculator.calculate_score(max_profit, max_loss)
         
         return BWBPosition(
             ticker=str(opt_k2["symbol"]),

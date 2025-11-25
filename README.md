@@ -96,19 +96,19 @@ Found 45 valid BWB positions
 Top 10 BWB Positions (sorted by score):
 ====================================================================================================
 ticker  expiry      dte   k1   k2   k3  credit  max_profit  max_loss  score
-SPY     2025-11-28   3   440  445  455    1.25      125.00    875.00  0.1429
-SPY     2025-11-28   3   438  444  456    1.18      118.00    882.00  0.1338
+SPY     2025-11-28   3   440  445  455    2.00      700.00    300.00  233.33
+SPY     2025-11-28   3   438  444  456    1.80      680.00    320.00  212.50
 ...
 
 Summary Statistics:
 ====================================================================================================
 Total Positions: 45
-Avg Score: 0.1156
-Avg Credit: 0.98
-Avg Max Profit: 98.45
-Avg Max Loss: 865.22
-Best Score: 0.1429
-Worst Score: 0.0571
+Avg Score: 185.50
+Avg Credit: 1.65
+Avg Max Profit: 665.00
+Avg Max Loss: 335.00
+Best Score: 233.33
+Worst Score: 125.00
 ```
 
 ## API & Full-Stack Mode
@@ -140,6 +140,17 @@ Health check endpoint.
 }
 ```
 
+#### GET /tickers
+List supported tickers and their spot prices.
+
+**Response:**
+```json
+{
+  "supported_tickers": ["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "AMD"],
+  "spot_prices": {"SPY": 450.0, "QQQ": 380.0, ...}
+}
+```
+
 #### POST /scan
 Scan for BWB opportunities.
 
@@ -147,7 +158,7 @@ Scan for BWB opportunities.
 ```json
 {
   "ticker": "SPY",
-  "expiry": "2025-11-30"  // Optional, omit to scan all expiries
+  "expiry": "2025-11-30"
 }
 ```
 
@@ -165,15 +176,15 @@ Scan for BWB opportunities.
       "wing_left": 5.0,
       "wing_right": 10.0,
       "credit": 2.0,
-      "max_profit": 200.0,
-      "max_loss": 800.0,
-      "score": 0.25
+      "max_profit": 700.0,
+      "max_loss": 300.0,
+      "score": 233.33
     }
   ],
   "summary": {
     "total_found": 45,
-    "avg_score": 0.1234,
-    "best_score": 0.25,
+    "avg_score": 150.5,
+    "best_score": 233.33,
     "avg_credit": 1.85
   }
 }
@@ -271,9 +282,9 @@ bwb_scanner/
 - Single contract multiplier of 100
 
 ### Risk Calculations
-- **Max Profit**: Net credit received × 100
-- **Max Loss**: Larger wing width × 100 - Max Profit
-- **Score**: Max Profit / Max Loss (higher is better)
+- **Max Profit**: (Net credit + left wing width) × 100 (occurs at K2)
+- **Max Loss**: (Right wing - left wing - credit) × 100 (occurs above K3 for typical BWB)
+- **Score**: Max Profit / Max Loss × 100 (higher is better)
 
 ## Future Improvements
 
@@ -393,8 +404,8 @@ vercel --prod
 
 The project includes:
 - `vercel.json` - Vercel configuration for Python serverless functions
-- `api/index.py` - Serverless function handler using Mangum adapter
-- `requirements.txt` - Includes `mangum` for ASGI-to-Lambda adaptation
+- `api/index.py` - Serverless function entry point
+- `requirements.txt` - Python dependencies
 
 #### API Endpoints After Deployment
 
@@ -416,14 +427,13 @@ The CORS configuration automatically adapts based on this environment variable:
 
 #### Sample Data
 
-The API will automatically generate `sample_options_chain.csv` on first request if it doesn't exist. For production, consider pre-generating this file or using a data storage service.
+The API generates synthetic options data in memory at startup for all supported tickers. This data is used for demonstration purposes. For production, integrate with a real market data provider.
 
 ### Other Deployment Options
 
 - **Railway**: Supports Python with FastAPI out of the box
 - **Render**: Free tier available for Python web services
 - **Fly.io**: Good for containerized Python apps
-- **AWS Lambda**: Use Mangum adapter (already included)
 
 ## License
 
@@ -440,7 +450,7 @@ Contributions are welcome! Areas for improvement:
 
 ## Testing
 
-The project includes a comprehensive test suite with 68 tests covering:
+The project includes a comprehensive test suite with 77 tests covering:
 
 ### Running Tests
 
@@ -468,6 +478,7 @@ pytest tests/ --cov=bwb_scanner --cov-report=html
 - ✅ Credit, max profit, max loss calculations
 - ✅ Score calculation and edge cases
 - ✅ Position construction and filtering
+- ✅ **Payoff-at-underlying tests** (validates P&L at various spot prices)
 
 **Data Loader Tests** ([`test_data_loader.py`](tests/test_data_loader.py:1))
 - ✅ CSV loading and validation
@@ -488,11 +499,12 @@ pytest tests/ --cov=bwb_scanner --cov-report=html
 **Payoff Math Verification:**
 ```python
 # Known example: 440/445/455 BWB
-# Long 440 @ $15, Short 2x 445 @ $8, Long 455 @ $3
-# Credit = 15 + 3 - (2*8) = $2.00
-# Max Profit = $2.00 * 100 = $200
-# Max Loss = (10 * 100) - $200 = $800
-# Score = $200 / $800 = 0.25
+# Long 440 @ $12 ask, Short 2x 445 @ $8 bid, Long 455 @ $2 ask
+# Credit = (2*8) - 12 - 2 = $2.00
+# Wing left = 5, Wing right = 10
+# Max Profit at K2 = ($2.00 + $5.00) * 100 = $700
+# Max Loss above K3 = (10 - 5 - 2) * 100 = $300
+# Score = $700 / $300 * 100 = 233.33
 ```
 
 **Filter Verification:**
@@ -502,6 +514,7 @@ pytest tests/ --cov=bwb_scanner --cov-report=html
 # - Delta filter: Short strike delta 0.20-0.35
 # - Credit filter: Minimum $0.50 credit
 # - Asymmetry filter: (K2-K1) ≠ (K3-K2)
+# - Data validation: bid <= ask, prices >= 0, valid delta ranges
 ```
 
 ## Disclaimer
