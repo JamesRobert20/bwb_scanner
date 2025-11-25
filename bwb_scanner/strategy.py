@@ -93,22 +93,22 @@ class BWBCalculator:
     
     @staticmethod
     def calculate_credit(
-        bid_k1: float,
-        ask_k2: float,
-        bid_k3: float
+        ask_k1: float,
+        bid_k2: float,
+        ask_k3: float
     ) -> float:
         """
         Calculate net credit received.
         
         Args:
-            bid_k1: Bid price for long call at K1
-            ask_k2: Ask price for short calls at K2
-            bid_k3: Bid price for long call at K3
+            ask_k1: Ask price for long call at K1 (you pay ask when buying)
+            bid_k2: Bid price for short calls at K2 (you receive bid when selling)
+            ask_k3: Ask price for long call at K3 (you pay ask when buying)
             
         Returns:
-            Net credit received
+            Net credit received (positive = credit, negative = debit)
         """
-        return bid_k1 + bid_k3 - (2 * ask_k2)
+        return (2 * bid_k2) - ask_k1 - ask_k3
     
     @staticmethod
     def calculate_max_profit(credit: float) -> float:
@@ -228,11 +228,10 @@ class BWBConstructor:
         if not self.validator.is_asymmetric(k1, k2, k3):
             return None
         
-        # Calculate metrics
         credit = self.calculator.calculate_credit(
-            opt_k1["bid"],
-            opt_k2["ask"],
-            opt_k3["bid"]
+            opt_k1["ask"],
+            opt_k2["bid"],
+            opt_k3["ask"]
         )
         
         # Validate credit
