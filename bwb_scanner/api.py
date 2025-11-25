@@ -23,56 +23,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+generator = OptionsChainGenerator(ticker="SPY")
+_chain_data = generator.generate_chain(spot_price=450.0, num_strikes=15)
+_constructor = BWBConstructor()
 
-# Cache the generated chain data in memory
-_cached_chain: Optional[pd.DataFrame] = None
+_scan_cache: dict = {}
 
-
-def get_options_chain() -> pd.DataFrame:
-    """
-    Get options chain data (generates in-memory, no file I/O).
+def scan_chain(ticker: str, expiry: Optional[str] = None) -> pd.DataFrame:
+    cache_key = f"{ticker}:{expiry or 'all'}"
+    if cache_key in _scan_cache:
+        return _scan_cache[cache_key]
     
-    Returns:
-        DataFrame with options chain data
-    """
-    global _cached_chain
+    empty_df = pd.DataFrame(columns=[
+        "ticker", "expiry", "dte", "k1", "k2", "k3",
+        "wing_left", "wing_right", "credit", "max_profit",
+        "max_loss", "score"
+    ])
     
-    if _cached_chain is None:
-        generator = OptionsChainGenerator(ticker="SPY")
-        _cached_chain = generator.generate_chain(spot_price=450.0)
-    
-    return _cached_chain
-
-
-def scan_chain(chain_data: pd.DataFrame, ticker: str, expiry: Optional[str] = None) -> pd.DataFrame:
-    """
-    Scan options chain for BWB opportunities.
-    
-    Args:
-        chain_data: Options chain DataFrame
-        ticker: Ticker symbol
-        expiry: Optional specific expiry date
-        
-    Returns:
-        DataFrame with valid BWB positions
-    """
-    constructor = BWBConstructor()
-    
-    # Filter by ticker
-    filtered = chain_data[chain_data["symbol"] == ticker.upper()].copy()
+    filtered = _chain_data[_chain_data["symbol"] == ticker.upper()].copy()
     
     if filtered.empty:
-        return pd.DataFrame(columns=[
-            "ticker", "expiry", "dte", "k1", "k2", "k3",
-            "wing_left", "wing_right", "credit", "max_profit",
-            "max_loss", "score"
-        ])
+        return empty_df
     
-    # Filter by expiry if specified
     if expiry:
         filtered = filtered[filtered["expiry"] == expiry]
     
-    # Get all expiries to scan
     expiries = filtered["expiry"].unique()
     
     all_results = []
@@ -83,22 +58,19 @@ def scan_chain(chain_data: pd.DataFrame, ticker: str, expiry: Optional[str] = No
         if calls_only.empty:
             continue
             
-        positions = constructor.find_all_combinations(calls_only)
+        positions = _constructor.find_all_combinations(calls_only)
         
         if positions:
             results_df = pd.DataFrame([pos.to_dict() for pos in positions])
             all_results.append(results_df)
     
     if not all_results:
-        return pd.DataFrame(columns=[
-            "ticker", "expiry", "dte", "k1", "k2", "k3",
-            "wing_left", "wing_right", "credit", "max_profit",
-            "max_loss", "score"
-        ])
+        return empty_df
     
     combined = pd.concat(all_results, ignore_index=True)
     combined = combined.sort_values("score", ascending=False).reset_index(drop=True)
     
+    _scan_cache[cache_key] = combined
     return combined
 
 
@@ -106,12 +78,6 @@ def scan_chain(chain_data: pd.DataFrame, ticker: str, expiry: Optional[str] = No
 
 @app.get("/")
 async def root():
-    """
-    Root endpoint - API health check.
-    
-    Returns:
-        Simple message confirming API is ready
-    """
     return {"message": "BWB Scanner API ready"}
 
 
@@ -120,54 +86,37 @@ async def scan_bwb(
     ticker: Annotated[str, Body()],
     expiry: Annotated[Optional[str], Body()] = None
 ):
-    """
-    Scan for BWB opportunities.
+    import time
+    start = time.time()
+    results = scan_chain(ticker, expiry)
+    scan_time_ms = round((time.time() - start) * 1000)
     
-    Args:
-        ticker: Ticker symbol to scan (e.g., "SPY")
-        expiry: Optional expiry date in YYYY-MM-DD format
-        
-    Returns:
-        JSON with results and summary statistics
-    """
-    # Get options chain data (in-memory, no file I/O)
-    chain_data = get_options_chain()
-    
-    # Perform scan
-    results = scan_chain(chain_data, ticker, expiry)
-    
-    # Convert results to dict
     if results.empty:
-        results_list = []
-        summary = {
-            "total_found": 0,
-            "avg_score": 0.0,
-            "best_score": 0.0,
-            "avg_credit": 0.0
-        }
-    else:
-        results_list = results.to_dict(orient="records")
-        summary = {
-            "total_found": len(results),
-            "avg_score": round(results["score"].mean(), 4),
-            "best_score": round(results["score"].max(), 4),
-            "avg_credit": round(results["credit"].mean(), 2)
+        return {
+            "results": [],
+            "summary": {
+                "total_found": 0,
+                "avg_score": 0.0,
+                "best_score": 0.0,
+                "avg_credit": 0.0,
+                "scan_time_ms": scan_time_ms
+            }
         }
     
     return {
-        "results": results_list,
-        "summary": summary
+        "results": results.to_dict(orient="records"),
+        "summary": {
+            "total_found": len(results),
+            "avg_score": round(results["score"].mean(), 4),
+            "best_score": round(results["score"].max(), 4),
+            "avg_credit": round(results["credit"].mean(), 2),
+            "scan_time_ms": scan_time_ms
+        }
     }
 
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint for monitoring.
-    
-    Returns:
-        Status information
-    """
     return {
         "status": "healthy",
         "service": "bwb-scanner-api",

@@ -149,19 +149,10 @@ class BWBCalculator:
     
     @staticmethod
     def calculate_score(max_profit: float, max_loss: float) -> float:
-        """
-        Calculate risk/reward score.
-        
-        Args:
-            max_profit: Maximum profit
-            max_loss: Maximum loss
-            
-        Returns:
-            Score (max_profit / max_loss)
-        """
         if max_loss == 0:
             return 0.0
-        return max_profit / max_loss
+        raw_score = (max_profit / max_loss) * 100
+        return min(raw_score, 100.0)
 
 
 class BWBConstructor:
